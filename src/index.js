@@ -4,6 +4,7 @@ const Koa = require('koa');
 const koaBody = require('koa-body');
 const Router = require('@koa/router');
 const _ = require('lodash');
+const { htmlToText } = require('html-to-text');
 
 const app = new Koa();
 const router = new Router();
@@ -81,10 +82,15 @@ const processWebhook = async (data) => {
       return;
     }
 
-    await ensureTokenValidity();
     const bucket = data.recording.bucket.id;
     const subscriptionUrl = data.recording.subscription_url;
     const commentUrl = subscriptionUrl.replace('subscription', 'comments');
+
+    await ensureTokenValidity();
+
+    const email = await simpleRequest({ url: data.recording.url, })
+    const emailContent = htmlToText(email.content, { wordwrap: false });
+    const emailPreview = emailContent.length > 250 ? emailContent.substring(0, 250).concat('...') : emailContent;
 
     const peopleInBucket = await paginatedRequest({
       url: `https://3.basecampapi.com/${process.env.BASECAMP_ACCOUNT}/projects/${bucket}/people.json`
@@ -99,7 +105,7 @@ const processWebhook = async (data) => {
     await simpleRequest({
       method: 'POST',
       url: commentUrl,
-      data: { content: 'Someone sent this email.' },
+      data: { content: `${email.from}: ${emailPreview}` },
     });
   } catch (e) {
     if (_.get(e, 'response.data')) {
